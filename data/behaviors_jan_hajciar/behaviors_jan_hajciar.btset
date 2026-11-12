@@ -1,0 +1,12 @@
+{
+  "name": "behaviors_jan_hajciar",
+  "trees": [
+    "Theseus\\KillMinotaur.bt"
+  ],
+  "initScripts": [
+    "Theseus\\Theseus.class.lua",
+    "classes.lua"
+  ],
+  "parameters": {},
+  "capabilities": {}
+}

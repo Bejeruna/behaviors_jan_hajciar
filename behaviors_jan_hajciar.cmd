@@ -1,0 +1,2 @@
+P:\tools\blue\AddonPacker_64\AddonPacker_x64.exe -s -ap -ac -p HAJCIAR -r -rt -odi -o o:\VBS4-release-26.1\data\BlueProduct\content\bisim_addons\ai\ -i P:\vbs2\customer\plugins\behaviors_jan_hajciar\
+pause

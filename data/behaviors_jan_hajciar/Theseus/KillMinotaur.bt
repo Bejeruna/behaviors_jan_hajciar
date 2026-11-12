@@ -1,0 +1,491 @@
+{
+  "name": "wait and listen",
+  "id": "4295675d-5241-44a0-9e59-01042d48c099",
+  "type": "supervisedParallel",
+  "subtrees": [
+    {
+      "name": "Wait Forever",
+      "id": "a23f1fcc-bee2-49b4-b567-17c9a0b3defd",
+      "type": "waitForever"
+    },
+    {
+      "name": "wait for msg and draw",
+      "id": "70f60b79-ac56-4c3e-99da-4382528ff81a",
+      "type": "sequence",
+      "subtrees": [
+        {
+          "name": "MinotaurPositionUpdate",
+          "id": "b7c97f90-7866-4203-ab57-9513f6b05fbc",
+          "type": "messageHandler",
+          "subject": "MinotaurPositionUpdate",
+          "handler": [
+            "if msg.value.position then",
+            "\tloc.lastKnownMinotaurPosition = msg.value.position",
+            "end"
+          ]
+        },
+        {
+          "name": "Wait to Find Path",
+          "id": "809aa2ed-5f68-41bd-8b29-d052ca9435b2",
+          "type": "sequence",
+          "subtrees": [
+            {
+              "name": "find path",
+              "id": "a6e7891f-8a54-4183-9656-d14fcc41c99a",
+              "type": "scriptAction",
+              "script": [
+                "loc.pathFuture = FindPath(self:GetPosition(), loc.lastKnownMinotaurPosition)"
+              ]
+            },
+            {
+              "name": "loc.pathFuture",
+              "id": "563c90c9-77da-4f7b-8968-fe3f0663c765",
+              "type": "waitUntil",
+              "condition": [
+                "return loc.pathFuture:IsReady()"
+              ]
+            },
+            {
+              "name": "save path",
+              "id": "99d666f3-96f9-4344-99f2-730d37fa81f9",
+              "type": "scriptAction",
+              "script": [
+                "loc.pathToMinotaur = loc.pathFuture:Value()",
+                "loc.pathFuture = nil"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Calculate corners",
+          "id": "d8801282-1f10-4a18-812f-ee395b8f8876",
+          "type": "scriptAction",
+          "script": [
+            "",
+            "",
+            "local path = loc.pathToMinotaur",
+            "local length = path:Length()",
+            "local cornerSize = 1 -- How big the area where soldier moves slowly is around corner",
+            "",
+            "loc.corners = {} -- Positions in 3D of start and end of the corner",
+            "loc.cornersDebugCenters = {} -- Positions in 3D of centers of the corners",
+            "loc.cornersPathIndices = {} -- Position along path indices of corner points",
+            "",
+            "local dir = path:DirectionAlongPath(0)",
+            "for i = 1, length do",
+            "    -- check angles along the path",
+            "\tlocal newDir = path:DirectionAlongPath(i)",
+            "    local turn = MathExt.AngleDiff(dir, newDir)",
+            "",
+            "    if math.abs(turn) > 20 then",
+            "        local cornerPosition = path:PositionAlongPath(i)",
+            "        table.insert(loc.cornersDebugCenters, cornerPosition)",
+            "",
+            "        -- Store a bit of space before and after the corner where the soldier will move slowly",
+            "        local startIndex = math.max(i - cornerSize, 0)",
+            "        local endIndex = math.min(i + cornerSize, length)",
+            "        local cornerStart = path:PositionAlongPath(startIndex)",
+            "        local cornerEnd = path:PositionAlongPath(endIndex)",
+            "",
+            "        table.insert(loc.corners, cornerStart)",
+            "        table.insert(loc.corners, cornerEnd)",
+            "        table.insert(loc.cornersPathIndices, startIndex)",
+            "        table.insert(loc.cornersPathIndices, endIndex)",
+            "    end",
+            "",
+            "    dir = newDir",
+            "end",
+            "",
+            "if lastKnownMinotaurPosition ~= nil then",
+            "    -- Add minotaur position as the last target",
+            "    table.insert(loc.corners, path:PositionAlongPath(length))",
+            "    table.insert(loc.cornersPathIndices, length)",
+            "else",
+            "    -- Handle when minotaur is dead",
+            "    table.insert(loc.corners, self:GetPosition())",
+            "    table.insert(loc.cornersPathIndices, 0)",
+            "    table.insert(loc.cornersPathIndices, 0)",
+            "end",
+            "",
+            "",
+            "-- Start from the beginning",
+            "loc.nextCornerIndex = 1",
+            "loc.locationUpdate = true"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Logic",
+      "id": "48df0280-ae53-44ac-9ce3-a47147b102e7",
+      "type": "selector",
+      "subtrees": [
+        {
+          "name": "Shoot minotaur",
+          "id": "bea0f45c-e4da-42cd-820b-a24ac2299b88",
+          "type": "fire",
+          "decorators": [
+            {
+              "id": "1ce3918a-a041-439e-8fcc-c03c8e77a9d1",
+              "type": "scriptCondition",
+              "name": "Sees enemy",
+              "script": [
+                "--local enemy = behaviors_dprk_base.EnemySensors.GetEnemyNearby(self, 20)",
+                "local enemy = nil",
+                "local pos = self:GetPosition()",
+                "local enemies = GetEntitiesInArea( Circle(self:GetPosition(), 20), { enemyOf = self })",
+                "",
+                "if #enemies > 0 and enemies[1]:IsAlive() and enemies[1]:Valid() then",
+                "    enemy = enemies[1]",
+                "end",
+                "",
+                "if enemy == nil or not self:IsVisible(enemy) then",
+                "    --DebugLog(\"Cannot see\")",
+                "    return false",
+                "end",
+                "",
+                "--DebugLog(\"Can see\")",
+                "loc.enemy = enemy",
+                "return true",
+                "",
+                "--local enemies = self:GetVisibleEnemies()",
+                "--DebugLog(\"Seeing: \" .. tostring(self:CanSeeEnemy()))",
+                "--if #enemies > 0 then",
+                "--    loc.enemy = enemies[1]",
+                "--    DebugLog(\"Can see\")",
+                "--    return true",
+                "--else",
+                "--    DebugLog(\"Cannot see\")",
+                "--    return false",
+                "--end"
+              ]
+            }
+          ],
+          "rounds": [
+            "self:ReqHeadingAimAtEntity(loc.enemy)",
+            "return 100"
+          ],
+          "forced": false
+        },
+        {
+          "name": "Is position set",
+          "id": "7f74d4b6-1488-4bbd-b712-cb6d84e15ed8",
+          "type": "selector",
+          "subtrees": [
+            {
+              "name": "Reset move variables",
+              "id": "b6c2ef00-d31f-4c33-8a2f-f7ab56fdcd6a",
+              "type": "scriptAction",
+              "decorators": [
+                {
+                  "id": "bcf4e1d6-7c2c-4ec7-8987-280b145091e8",
+                  "type": "scriptCondition",
+                  "name": "New info",
+                  "script": [
+                    "return loc.locationUpdate"
+                  ]
+                }
+              ],
+              "script": [
+                "loc.isSlowdown = false",
+                "loc.nextCornerIndex = 1",
+                "loc.locationUpdate = false"
+              ]
+            },
+            {
+              "name": "Go by corners",
+              "id": "88f99588-eef9-4082-9394-8eb98a4cea92",
+              "type": "sequence",
+              "subtrees": [
+                {
+                  "name": "Set speed limit",
+                  "id": "8e0395d5-ad61-4f05-b2e6-17dbea509eb2",
+                  "type": "setEntitySpeedLimits",
+                  "movementSpeed": [
+                    "local limit = 100",
+                    "if loc.isSlowdown then",
+                    "    limit = 1",
+                    "end",
+                    "",
+                    "return limit"
+                  ]
+                },
+                {
+                  "name": "Move",
+                  "id": "51d8526b-441e-4ec9-9ca6-cc484731525a",
+                  "type": "parallel",
+                  "subtrees": [
+                    {
+                      "name": "Debug next target position",
+                      "id": "97a344f0-c455-4324-a8f1-850af9fb4c96",
+                      "type": "scriptAction",
+                      "decorators": [
+                        {
+                          "id": "fb8c3d51-636b-43c2-a018-44df8a4d8c67",
+                          "type": "loopForever",
+                          "name": "Draw line"
+                        }
+                      ],
+                      "script": [
+                        "if",
+                        "    loc.lastKnownMinotaurPosition ~= nil and loc.nextCornerIndex ~= nil and loc.corners[loc.nextCornerIndex] ~= nil",
+                        "then",
+                        "    local OFFSET = Vec3(0,0,3)",
+                        "",
+                        "    -- green is slow, blue is fast",
+                        "    local r, g, b = 0, 0, 0",
+                        "    if loc.isSlowdown then",
+                        "        g = 1",
+                        "    else",
+                        "        b = 1",
+                        "    end",
+                        "",
+                        "    ai_core_public.draw.Line(",
+                        "        self:GetPosition() + OFFSET,",
+                        "        loc.corners[loc.nextCornerIndex] + OFFSET,",
+                        "        r, g, b, 1",
+                        "    )",
+                        "end"
+                      ]
+                    },
+                    {
+                      "name": "Move to next corner",
+                      "id": "5832cf16-3327-4a6d-9731-f3a684c32042",
+                      "type": "move",
+                      "position": [
+                        "return loc.corners[loc.nextCornerIndex]"
+                      ]
+                    }
+                  ],
+                  "waitForAll": false
+                },
+                {
+                  "name": "Update corner",
+                  "id": "c5d8515b-db53-40be-b8a0-36867015b5b7",
+                  "type": "scriptAction",
+                  "script": [
+                    "loc.nextCornerIndex = loc.nextCornerIndex + 1",
+                    "",
+                    "-- Prevent going backwards at multiple corners close to each other",
+                    "if loc.cornersPathIndices[loc.nextCornerIndex] ~= nil and loc.cornersPathIndices[loc.nextCornerIndex] < loc.cornersPathIndices[loc.nextCornerIndex - 1] then",
+                    "    loc.nextCornerIndex = loc.nextCornerIndex + 1",
+                    "end",
+                    "--end",
+                    "",
+                    "loc.isSlowdown = loc.nextCornerIndex % 2 == 0 -- even numbers mean slow down",
+                    "",
+                    "if loc.nextCornerIndex > #loc.corners then",
+                    "    loc.nextCornerIndex = nil",
+                    "end"
+                  ]
+                }
+              ],
+              "decorators": [
+                {
+                  "id": "90fb6150-416e-48b8-8476-3e3ce601645d",
+                  "type": "scriptCondition",
+                  "name": "Has corner info",
+                  "script": [
+                    "return loc.nextCornerIndex ~= nil and loc.corners ~= nil"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Wait Forever",
+              "id": "47005489-bfc7-4e52-aaad-b7202b4c4528",
+              "type": "waitForever"
+            }
+          ],
+          "decorators": [
+            {
+              "id": "1217ef9f-e735-49bc-b048-0e07f1abf318",
+              "type": "loopForever",
+              "name": "Go to minotaur"
+            }
+          ],
+          "active": true
+        }
+      ],
+      "active": true
+    },
+    {
+      "name": "Debug",
+      "id": "72b8c519-2bde-4bd3-ad9a-07fb782466b5",
+      "type": "parallel",
+      "subtrees": [
+        {
+          "name": "Debug Path",
+          "id": "5977c8f1-ccaf-40c1-a295-ff94e5c06173",
+          "type": "scriptAction",
+          "decorators": [
+            {
+              "id": "3811484d-ac9e-4b15-9131-563ac5b33051",
+              "type": "loopForever",
+              "name": "Draw path"
+            }
+          ],
+          "script": [
+            "if",
+            "    loc.pathToMinotaur ~= nil",
+            "then",
+            "    local OFFSET = Vec3(0,0,2) -- draw up",
+            "    ai_core_public.draw.Path( -- a package we packed, supplied by PepeAmpere",
+            "        loc.pathToMinotaur,",
+            "        1, 0, 1, 1,",
+            "        OFFSET",
+            "    )",
+            "end"
+          ]
+        },
+        {
+          "name": "Debug Corners",
+          "id": "06cfc064-e686-40d0-8aba-648c51a394f5",
+          "type": "scriptAction",
+          "decorators": [
+            {
+              "id": "bf600b1a-7986-453d-bceb-649066aca840",
+              "type": "loopForever",
+              "name": "Draw corners"
+            }
+          ],
+          "script": [
+            "if",
+            "    loc.corners ~= nil",
+            "then",
+            "    local OFFSET = Vec3(0,0,2) -- draw up",
+            "    for k, pos in pairs(loc.cornersDebugCenters) do",
+            "        ai_core_public.draw.Circle(",
+            "            pos + OFFSET,",
+            "            1,",
+            "            1, 0, 1, 1",
+            "        )",
+            "    end",
+            "",
+            "end"
+          ]
+        }
+      ],
+      "waitForAll": true
+    }
+  ],
+  "meta": {
+    "nodesInfo": [
+      {
+        "id": "4295675d-5241-44a0-9e59-01042d48c099",
+        "position": "2287.5,274.8"
+      },
+      {
+        "id": "a23f1fcc-bee2-49b4-b567-17c9a0b3defd",
+        "position": "1041.5,494.8"
+      },
+      {
+        "id": "70f60b79-ac56-4c3e-99da-4382528ff81a",
+        "position": "1462.5,474.8"
+      },
+      {
+        "id": "b7c97f90-7866-4203-ab57-9513f6b05fbc",
+        "position": "1212.5,599.800000000001"
+      },
+      {
+        "id": "809aa2ed-5f68-41bd-8b29-d052ca9435b2",
+        "position": "1443.3,705.264285714286"
+      },
+      {
+        "id": "a6e7891f-8a54-4183-9656-d14fcc41c99a",
+        "position": "1237.5,862.3"
+      },
+      {
+        "id": "563c90c9-77da-4f7b-8968-fe3f0663c765",
+        "position": "1437.5,862.3"
+      },
+      {
+        "id": "99d666f3-96f9-4344-99f2-730d37fa81f9",
+        "position": "1612.5,862.3"
+      },
+      {
+        "id": "d8801282-1f10-4a18-812f-ee395b8f8876",
+        "position": "1662.5,637.300000000001"
+      },
+      {
+        "id": "48df0280-ae53-44ac-9ce3-a47147b102e7",
+        "position": "2412.5,449.8"
+      },
+      {
+        "id": "bea0f45c-e4da-42cd-820b-a24ac2299b88",
+        "position": "2075,549.8"
+      },
+      {
+        "id": "7f74d4b6-1488-4bbd-b712-cb6d84e15ed8",
+        "position": "2687.5,562.3"
+      },
+      {
+        "id": "b6c2ef00-d31f-4c33-8a2f-f7ab56fdcd6a",
+        "position": "2325,699.8"
+      },
+      {
+        "id": "88f99588-eef9-4082-9394-8eb98a4cea92",
+        "position": "2662.5,712.3"
+      },
+      {
+        "id": "8e0395d5-ad61-4f05-b2e6-17dbea509eb2",
+        "position": "2337.5,862.3"
+      },
+      {
+        "id": "51d8526b-441e-4ec9-9ca6-cc484731525a",
+        "position": "2550,862.3"
+      },
+      {
+        "id": "97a344f0-c455-4324-a8f1-850af9fb4c96",
+        "position": "2337.5,974.8"
+      },
+      {
+        "id": "5832cf16-3327-4a6d-9731-f3a684c32042",
+        "position": "2775,999.8"
+      },
+      {
+        "id": "c5d8515b-db53-40be-b8a0-36867015b5b7",
+        "position": "2925,874.8"
+      },
+      {
+        "id": "47005489-bfc7-4e52-aaad-b7202b4c4528",
+        "position": "2975,699.8"
+      },
+      {
+        "id": "72b8c519-2bde-4bd3-ad9a-07fb782466b5",
+        "position": "3287.5,399.8"
+      },
+      {
+        "id": "5977c8f1-ccaf-40c1-a295-ff94e5c06173",
+        "position": "3187.5,537.3"
+      },
+      {
+        "id": "06cfc064-e686-40d0-8aba-648c51a394f5",
+        "position": "3425,524.8"
+      }
+    ],
+    "editorObjects": [],
+    "canvasSize": "5154.4084848485,2625.60000000001",
+    "gridPadding": "0,12.3000000000005"
+  },
+  "parameters": [
+    {
+      "name": "orderData",
+      "isOptional": false,
+      "defaultValue": "",
+      "evaluation": "passByReference"
+    }
+  ],
+  "locals": {
+    "lastKnownMinotaurPosition": "return nil",
+    "pathToMinotaur": "return nil",
+    "pathFuture": "return nil",
+    "corners": "return nil",
+    "cornersPathIndices": "return nil",
+    "nextCornerIndex": "return nil",
+    "isSlowdown": "return false",
+    "cornersDebugCenters": "return nil",
+    "enemy": "return nil",
+    "locationUpdate": "return false"
+  }
+}
